@@ -3,6 +3,6 @@
         "promises-aplus-tests": "*"
     },
     "scripts": {
-        "test": "promises-aplus-tests Promise"
+        "test": "promises-aplus-tests promise/promise-interface.js"
     }
 }
