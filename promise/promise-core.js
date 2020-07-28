@@ -1,6 +1,6 @@
 const {Once} = require("./promise-util.js");
 
-const PROMISEPROMISE_STATE = {
+const PROMISE_STATE = {
     pending: "pending",
     fulfilled: "fulfilled",
     rejected: "rejected"
@@ -14,7 +14,7 @@ function _Promise(resolver){
     // 回调队列
     this.fulfilledCB = [],
     this.rejectedCB = [],
-    this.state = PROMISEPROMISE_STATE.pending;
+    this.state = PROMISE_STATE.pending;
     this.fulfilledValue = undefined, this.rejectedValue = undefined;
     
     let reject = Once(_reject.bind(this));
@@ -31,41 +31,61 @@ function _Promise(resolver){
 }
 
 function _reject(reason){
-    if(this.state !== PROMISEPROMISE_STATE.pending){
+    if(this.state !== PROMISE_STATE.pending){
         return;
     }
-    this.state = PROMISEPROMISE_STATE.rejected;
+    this.state = PROMISE_STATE.rejected;
     this.rejectedValue = reason;
     let cbs = this.rejectedCB.slice(0);
     for(let cb of cbs){
         if(typeof cb === "function"){
-            this.rejectedValue = cb(this.rejectedValue);
+            try {
+                this.rejectedValue = cb(this.rejectedValue);
+            }
+            catch(e){
+                return _Promise.rejected(e);
+            }
         }
     }
+    return this;
 }
 
 function _resolve(value) {
-    if(this.state !== PROMISEPROMISE_STATE.pending){
+    if(this.state !== PROMISE_STATE.pending){
         return;
     }
-    this.state = PROMISEPROMISE_STATE.fulfilled;
+    this.state = PROMISE_STATE.fulfilled;
     this.fulfilledValue = value;
     let cbs = this.fulfilledCB.slice(0);
     for(let cb of cbs){
         if(typeof cb === "function"){
-            this.fulfilledValue = cb(this.fulfilledValue);
+            try {
+                this.fulfilledValue = cb(this.fulfilledValue);
+            }
+            catch(e){
+                return _Promise.rejected(e);
+            }
         }
     }
+    return this;
+}
+
+_Promise.resolves = function(value){
+    let promise = new _Promise();
+    return promise.resolve(value);
+}
+
+_Promise.rejected = function(reason){
+    let promise = new _Promise();
+    return promise.reject(reason);
 }
 
 _Promise.prototype.reject = function promiseReject(reason){
-    _reject.call(this, reason);
-    return this;
+    return _reject.call(this, reason);
 }
 
 _Promise.prototype.resolve = function promiseResolve(value){
-    _resolve.call(this, value);
-    return this;
+    return _resolve.call(this, value);
 }
 
 _Promise.prototype.then = function _then(onFulfilled, onRejected) {
@@ -75,7 +95,7 @@ _Promise.prototype.then = function _then(onFulfilled, onRejected) {
     if(typeof onRejected !== "function"){
         onRejected = undefined;
     }
-    
+
     if(!onFulfilled){
         return this;
     }
@@ -84,10 +104,20 @@ _Promise.prototype.then = function _then(onFulfilled, onRejected) {
         onRejected && this.rejectedCB.push(onRejected);
     }
     else if(this.state === PROMISE_STATE.fulfilled && onFulfilled){
-        this.fulfilledValue = onFulfilled(this.fulfilledValue);
+        try {
+            this.fulfilledValue = onFulfilled(this.fulfilledValue);
+        }
+        catch(e){
+            return _Promise.rejected(e);
+        }
     }
     else if(this.state === PROMISE_STATE.rejected && onRejected){
-        this.rejectedValue = onRejected(this.rejectedValue);
+        try {
+            this.rejectedValue = onRejected(this.rejectedValue);
+        }
+        catch(e){
+            return _Promise.rejected(e);
+        }
     }
     return this;
 }
@@ -100,7 +130,12 @@ _Promise.prototype.catch = function _catch(onRejected){
         onRejected && this.rejectedCB.push(onRejected);
     }
     else if(this.state === PROMISE_STATE.rejected && onRejected){
-        this.rejectedValue = onRejected(this.rejectedValue);
+        try {
+            this.rejectedValue = onRejected(this.rejectedValue);
+        }
+        catch(e){
+            return _Promise.rejected(e);
+        }
     }
     return this; 
 }
