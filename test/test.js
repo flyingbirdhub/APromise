@@ -1,7 +1,6 @@
-let promisesAplusTests = require("promises-aplus-tests");
-let SelfPromise = require("Promise.js");
+let {deferred, rejected} = require("../promise/promise-interface.js");
 
-promisesAplusTests(adapter, function (err) {
-    // All done; output is in the console. Or check `err` for number of failures.
+rejected({dummy: "dummy"}).then(undefined, function(){
+    console.log("hello");
 });
 
