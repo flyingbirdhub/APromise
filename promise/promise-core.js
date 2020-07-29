@@ -35,50 +35,55 @@ function resolvePromise(promise, x, resolve, reject) {
         reject(TypeError("promise and x refer to the same object"))
     }
 
-    if (x instanceof _Promise) {
-        x.then(resolve, reject);
-    }
-    else {
-        if (IsObject(x) || IsFunction(x)) {
-            try {
-                let then = x.then;
-                let once = false;
-                if (IsFunction(then)) {
-                    try {
-                        then.call(x, function (y) {
-                            if (once) {
-                                return;
-                            }
-                            once = true;
-                            resolvePromise(promise, y, resolve, reject);
-                        }, function (y) {
-                            if (once) {
-                                return;
-                            }
-                            once = true;
-                            reject(y);
-                        });
-                    }
-                    catch (e) {
-                        if (once) {
-                            return;
-                        }
-                        else {
-                            reject(e);
-                        }
-                    }
-                }
-                else {
-                    resolve(x);
-                }
-            }
-            catch (e) {
-                reject(e);
-            }
+    try {
+        if (x instanceof _Promise) {
+            x.then(resolve, reject);
         }
         else {
-            resolve(x);
+            if (IsObject(x) || IsFunction(x)) {
+                try {
+                    let then = x.then;
+                    let once = false;
+                    if (IsFunction(then)) {
+                        try {
+                            then.call(x, function (y) {
+                                if (once) {
+                                    return;
+                                }
+                                once = true;
+                                resolvePromise(promise, y, resolve, reject);
+                            }, function (y) {
+                                if (once) {
+                                    return;
+                                }
+                                once = true;
+                                reject(y);
+                            });
+                        }
+                        catch (e) {
+                            if (once) {
+                                return;
+                            }
+                            else {
+                                reject(e);
+                            }
+                        }
+                    }
+                    else {
+                        resolve(x);
+                    }
+                }
+                catch (e) {
+                    reject(e);
+                }
+            }
+            else {
+                resolve(x);
+            }
         }
+    }
+    catch(e){
+        reject(e);
     }
 }
 
@@ -101,7 +106,8 @@ function NeedResolve(value){
     }
 
     if(IsFunction(value) || IsObject(value)){
-        if(IsFunction(value.then)){
+        let obj = Object.getOwnPropertyDescriptor(value, "then");
+        if(obj && IsFunction(obj.value)){
             return true;
         }
     }
@@ -109,14 +115,14 @@ function NeedResolve(value){
 }
 
 function _resolve(value) {
+    if (this.state !== PROMISE_STATE.pending) {
+        return;
+    }
     if(NeedResolve(value)){
         resolvePromise(this, value, this.resolve.bind(this), this.reject.bind(this));
         return this;
     }
     
-    if (this.state !== PROMISE_STATE.pending) {
-        return;
-    }
     this.state = PROMISE_STATE.fulfilled;
     this.fulfilledValue = value;
     let cbs = this.fulfilledCB.slice(0);

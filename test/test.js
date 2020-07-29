@@ -7,14 +7,6 @@ function outer (value) {
     return resolved(value);
 }
 
-function inner (value) {
-    return {
-        then: function (onFulfilled) {
-            onFulfilled(value);
-        }
-    };
-}
-
 function yFactory() {
     return outer(inner(sentinel));
 }
@@ -25,6 +17,23 @@ function xFactory() {
             resolvePromise(yFactory());
         }
     };
+}
+
+function inner(value) {
+    var numberOfTimesThenRetrieved = 0;
+    return Object.create(null, {
+        then: {
+            get: function () {
+                if (numberOfTimesThenRetrieved === 0) {
+                    ++numberOfTimesThenRetrieved;
+                    return function (onFulfilled) {
+                        onFulfilled(value);
+                    };
+                }
+                return null;
+            }
+        }
+    });
 }
 
 var promise = resolved(dummy).then(function onBasePromiseFulfilled() {
