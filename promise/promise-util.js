@@ -1,32 +1,43 @@
 /**
- * execute the func only once
+ * provide util function for promise
  */
-module.exports.Once = function Once(func){
+let Util = Object.create(null);
+
+/**
+ * wrap a function, and return a function that can only execute for once
+ */
+Util.once = function (func){
     let executed = false;
     return function(params){
         if(executed){
             return;
         }
         executed = true;
-        if(typeof func === "function"){
-            func(params);
-        }
+        Util.isFunction(func) && func(params);
     }
 }
 
 /**
  * execute the func in the next tick
  */
-module.exports.NextTick = function NextTick(func){
+Util.nextTick = function (func){
     return function(){
         setTimeout(func, 0);
     }
 }
 
-module.exports.IsFunction = function IsFunction(func){
+/**
+ * check the func if is a real function
+ */
+Util.isFunction = function (func){
     return typeof func === "function";
 }
 
-module.exports.IsObject = function IsObject(obj){
+/**
+ * check the obj if is a object, exclude the "null"
+ */
+Util.isObject = function (obj){
     return Object.prototype.toString.call(obj) === "[object Object]";
 }
+
+module.exports.Util = Util;

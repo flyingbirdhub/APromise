@@ -1,4 +1,7 @@
-const { Once, NextTick, IsFunction, IsObject } = require("./promise-util.js");
+/**
+ * core (create a promise, add then method, resolve promise)
+ */
+const { Util } = require("./promise-util.js");
 
 const PROMISE_STATE = {
     pending: "pending",
@@ -6,27 +9,80 @@ const PROMISE_STATE = {
     rejected: "rejected"
 };
 
-function _Promise(resolver) {
-    if (!(this instanceof _Promise)) {
-        throw "SelfPromise must be called by new!"
+function APromise(resolver) {
+    if (!(this instanceof APromise)) {
+        throw "APromise must be called by new!"
     }
 
-    // 回调队列
-    this.fulfilledCB = [],
-        this.rejectedCB = [],
-        this.state = PROMISE_STATE.pending;
-    this.fulfilledValue = undefined, this.rejectedValue = undefined;
-
-    let reject = _reject.bind(this);
-    let resolve = _resolve.bind(this);
+    // define property on APromise Object
+    this.fulfilledCB = [], this.rejectedCB = [], this.status = PROMISE_STATE.pending, this.data = undefined;
 
     if (typeof resolver === "function") {
         try {
-            resolver(resolve, reject);
+            resolver(resolve.bind(this), reject.bind(this));
         }
         catch (e) {
-            reject(e);
+            (reject.bind(this))(e);
         }
+    }
+}
+
+APromise.prototype.then = function (onFulfilled, onRejected) {
+    !Util.isFunction(onFulfilled) && (onFulfilled = function(value){
+        return value;
+    });
+    !Util.isFunction(onRejected) && (onRejected = function(reason){
+        throw reason;
+    });
+
+    let parent = this;
+    let childPromise = new APromise(childResolver);
+    function childResolver(resolve, reject){
+        let childCB = function(cb){
+            return function(){
+                try {
+                    let x = cb(parent.data);
+                    resolvePromise(childPromise, x, resolve, reject);
+                }
+                catch(e){
+                    reject(e);
+                }
+            }
+        };
+        let childOnFulfilled = Util.nextTick(childCB(onFulfilled));
+        let childOnRejected = Util.nextTick(childCB(onRejected));
+        switch (parent.status) {
+            case PROMISE_STATE.pending:
+                parent.fulfilledCB.push(childOnFulfilled);
+                parent.rejectedCB.push(childOnRejected);
+                break;
+            case PROMISE_STATE.rejected:
+                childOnRejected();
+                break;
+            case PROMISE_STATE.fulfilled:
+            default:
+                childOnFulfilled();
+        }
+    }
+    return childPromise;
+}
+
+function reject(reason){
+    (changeState.bind(this))(PROMISE_STATE.pending, PROMISE_STATE.rejected, reason, this.rejectedCB.slice(0));
+}
+
+function resolve(value){
+    (changeState.bind(this))(PROMISE_STATE.pending, PROMISE_STATE.fulfilled, value, this.fulfilledCB.slice(0));
+}
+
+function changeState(origin, target, data, cbs){
+    if(this.status !== origin){
+        return;
+    }
+    this.status = target;
+    this.data = data;
+    for(let cb of cbs){
+        cb(this.data);
     }
 }
 
@@ -35,164 +91,47 @@ function resolvePromise(promise, x, resolve, reject) {
         reject(TypeError("promise and x refer to the same object"))
     }
 
-    try {
-        if (x instanceof _Promise) {
-            x.then(function(value){
-                resolvePromise(promise, value, resolve, reject);
-            }, reject);
-            return;
-        }
-        else {
-            if (IsObject(x) || IsFunction(x)) {
-                try {
-                    let then = x.then;
-                    let once = false;
-                    if (IsFunction(then)) {
-                        try {
-                            then.call(x, function (y) {
-                                if (once) {
-                                    return;
-                                }
-                                once = true;
-                                return resolvePromise(promise, y, resolve, reject);
-                            }, function (y) {
-                                if (once) {
-                                    return;
-                                }
-                                once = true;
-                                return reject(y);
-                            });
-                        }
-                        catch (e) {
-                            if (once) {
-                                return;
-                            }
-                            else {
-                                once = true;
-                                return reject(e);
-                            }
-                        }
+    if (x instanceof APromise) {
+        x.then(function(value){
+            resolvePromise(promise, value, resolve, reject);
+        }, reject);
+        return;
+    }
+
+    if(Util.isObject(x) || Util.isFunction(x)){
+        let once = false;
+        try {
+            let then = x.then;
+            if(Util.isFunction(then)){
+                then.call(x, function(y){
+                    if(once){
+                        return;
                     }
-                    else {
-                        resolve(x);
+                    once = true;
+                    resolvePromise(promise, y, resolve, reject);
+                }, function(reason){
+                    if(once){
+                        return;
                     }
-                }
-                catch (e) {
-                    reject(e);
-                }
+                    once = true;
+                    reject(reason);
+                });
             }
             else {
                 resolve(x);
             }
         }
-    }
-    catch(e){
-        reject(e);
-    }
-}
-
-function _reject(reason) {
-    if (this.state !== PROMISE_STATE.pending) {
+        catch(e){
+            if(once){
+                return;
+            }
+            once = true;
+            reject(e);
+        }
         return;
     }
-    this.state = PROMISE_STATE.rejected;
-    this.rejectedValue = reason;
-    let cbs = this.rejectedCB.slice(0);
-    for (let cb of cbs) {
-        cb(this.rejectedValue);
-    }
-    return this;
+
+    resolve(x);
 }
 
-function _resolve(value) {
-    if (this.state !== PROMISE_STATE.pending) {
-        return;
-    }
-    this.state = PROMISE_STATE.fulfilled;
-    this.fulfilledValue = value;
-    let cbs = this.fulfilledCB.slice(0);
-    for (let cb of cbs) {
-        cb(this.fulfilledValue);
-    }
-    return this;
-}
-
-_Promise.resolved = function (value) {
-    let promise = new _Promise();
-    return promise.resolve(value);
-}
-
-_Promise.rejected = function (reason) {
-    let promise = new _Promise();
-    return promise.reject(reason);
-}
-
-_Promise.prototype.reject = function (reason) {
-    return _reject.call(this, reason);
-}
-
-_Promise.prototype.resolve = function (value) {
-    return _resolve.call(this, value);
-}
-
-_Promise.prototype.then = function (onFulfilled, onRejected) {
-    !IsFunction(onFulfilled) && (onFulfilled = function(value){
-        return value;
-    });
-    !IsFunction(onRejected) && (onRejected = function(reason){
-        throw reason;
-    });
-
-    let parent = this;
-    let promise = new _Promise(function (resolve, reject) {
-        if (parent.state === PROMISE_STATE.pending) {
-            parent.fulfilledCB.push(NextTick(function () {
-                try {
-                    let x = onFulfilled(parent.fulfilledValue);
-                    resolvePromise(promise, x, resolve, reject);
-                }
-                catch (e) {
-                    reject(e);
-                }
-            }));
-            parent.rejectedCB.push(NextTick(function () {
-                try {
-                    let x = onRejected(parent.rejectedValue);
-                    resolvePromise(promise, x, resolve, reject);
-                }
-                catch (e) {
-                    reject(e);
-                }
-            }));
-        }
-        else if (parent.state === PROMISE_STATE.fulfilled) {
-            NextTick(function () {
-                try {
-                    let x = onFulfilled(parent.fulfilledValue);
-                    resolvePromise(promise, x, resolve, reject);
-                }
-                catch (e) {
-                    reject(e);
-                }
-            })();
-        }
-        else if (parent.state === PROMISE_STATE.rejected) {
-            NextTick(function () {
-                try {
-                    let x = onRejected(parent.rejectedValue);
-                    resolvePromise(promise, x, resolve, reject);
-                }
-                catch (e) {
-                    reject(e);
-                }
-            })();
-        }
-    });
-    return promise;
-}
-
-_Promise.prototype.catch = function (onRejected) {
-    return this.then(undefined, onRejected);
-}
-
-module.exports._Promise = _Promise;
+module.exports.APromise = APromise;
