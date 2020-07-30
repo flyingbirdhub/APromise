@@ -37,7 +37,10 @@ function resolvePromise(promise, x, resolve, reject) {
 
     try {
         if (x instanceof _Promise) {
-            x.then(resolve, reject);
+            x.then(function(value){
+                resolvePromise(promise, value, resolve, reject);
+            }, reject);
+            return;
         }
         else {
             if (IsObject(x) || IsFunction(x)) {
@@ -51,13 +54,13 @@ function resolvePromise(promise, x, resolve, reject) {
                                     return;
                                 }
                                 once = true;
-                                resolvePromise(promise, y, resolve, reject);
+                                return resolvePromise(promise, y, resolve, reject);
                             }, function (y) {
                                 if (once) {
                                     return;
                                 }
                                 once = true;
-                                reject(y);
+                                return reject(y);
                             });
                         }
                         catch (e) {
@@ -65,7 +68,8 @@ function resolvePromise(promise, x, resolve, reject) {
                                 return;
                             }
                             else {
-                                reject(e);
+                                once = true;
+                                return reject(e);
                             }
                         }
                     }
@@ -100,29 +104,10 @@ function _reject(reason) {
     return this;
 }
 
-function NeedResolve(value){
-    if(value instanceof _Promise){
-        return true;
-    }
-
-    if(IsFunction(value) || IsObject(value)){
-        let obj = Object.getOwnPropertyDescriptor(value, "then");
-        if(obj && IsFunction(obj.value)){
-            return true;
-        }
-    }
-    return false;
-}
-
 function _resolve(value) {
     if (this.state !== PROMISE_STATE.pending) {
         return;
     }
-    if(NeedResolve(value)){
-        resolvePromise(this, value, this.resolve.bind(this), this.reject.bind(this));
-        return this;
-    }
-    
     this.state = PROMISE_STATE.fulfilled;
     this.fulfilledValue = value;
     let cbs = this.fulfilledCB.slice(0);
@@ -151,21 +136,20 @@ _Promise.prototype.resolve = function (value) {
 }
 
 _Promise.prototype.then = function (onFulfilled, onRejected) {
-    !IsFunction(onFulfilled) && (onFulfilled = undefined);
-    !IsFunction(onRejected) && (onRejected = undefined);
+    !IsFunction(onFulfilled) && (onFulfilled = function(value){
+        return value;
+    });
+    !IsFunction(onRejected) && (onRejected = function(reason){
+        throw reason;
+    });
 
     let parent = this;
     let promise = new _Promise(function (resolve, reject) {
         if (parent.state === PROMISE_STATE.pending) {
             parent.fulfilledCB.push(NextTick(function () {
                 try {
-                    if (onFulfilled) {
-                        let x = onFulfilled(parent.fulfilledValue);
-                        resolvePromise(promise, x, resolve, reject);
-                    }
-                    else {
-                        resolve(parent.fulfilledValue);
-                    }
+                    let x = onFulfilled(parent.fulfilledValue);
+                    resolvePromise(promise, x, resolve, reject);
                 }
                 catch (e) {
                     reject(e);
@@ -173,13 +157,8 @@ _Promise.prototype.then = function (onFulfilled, onRejected) {
             }));
             parent.rejectedCB.push(NextTick(function () {
                 try {
-                    if (onRejected) {
-                        let x = onRejected(parent.rejectedValue);
-                        resolvePromise(promise, x, resolve, reject);
-                    }
-                    else {
-                        reject(parent.rejectedValue);
-                    }
+                    let x = onRejected(parent.rejectedValue);
+                    resolvePromise(promise, x, resolve, reject);
                 }
                 catch (e) {
                     reject(e);
@@ -187,36 +166,26 @@ _Promise.prototype.then = function (onFulfilled, onRejected) {
             }));
         }
         else if (parent.state === PROMISE_STATE.fulfilled) {
-            if (!onFulfilled) {
-                resolve(parent.fulfilledValue);
-            }
-            else {
-                NextTick(function () {
-                    try {
-                        let x = onFulfilled(parent.fulfilledValue);
-                        resolvePromise(promise, x, resolve, reject);
-                    }
-                    catch (e) {
-                        reject(e);
-                    }
-                })();
-            }
+            NextTick(function () {
+                try {
+                    let x = onFulfilled(parent.fulfilledValue);
+                    resolvePromise(promise, x, resolve, reject);
+                }
+                catch (e) {
+                    reject(e);
+                }
+            })();
         }
         else if (parent.state === PROMISE_STATE.rejected) {
-            if (!onRejected) {
-                reject(parent.rejectedValue);
-            }
-            else {
-                NextTick(function () {
-                    try {
-                        let x = onRejected(parent.rejectedValue);
-                        resolvePromise(promise, x, resolve, reject);
-                    }
-                    catch (e) {
-                        reject(e);
-                    }
-                })();
-            }
+            NextTick(function () {
+                try {
+                    let x = onRejected(parent.rejectedValue);
+                    resolvePromise(promise, x, resolve, reject);
+                }
+                catch (e) {
+                    reject(e);
+                }
+            })();
         }
     });
     return promise;
