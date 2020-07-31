@@ -4,6 +4,7 @@
     },
     "scripts": {
         "test": "promises-aplus-tests promise/promise-test.js",
+        "test-ext": "promises-aplus-tests promise/promise-extension-test.js",
         "test-es5": "promises-aplus-tests promise/promise-es5.js"
     }
 }
