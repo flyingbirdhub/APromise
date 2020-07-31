@@ -89,6 +89,7 @@ function changeState(origin, target, data, cbs){
 function resolvePromise(promise, x, resolve, reject) {
     if (promise === x) {
         reject(TypeError("promise and x refer to the same object"))
+        return;
     }
 
     if (x instanceof APromise) {
