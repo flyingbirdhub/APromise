@@ -93,8 +93,8 @@ function resolvePromise(promise, x, resolve, reject) {
     }
 
     if (x instanceof APromise) {
-        x.then(function(value){
-            resolvePromise(promise, value, resolve, reject);
+        x.then(function(y){
+            resolvePromise(promise, y, resolve, reject);
         }, reject);
         return;
     }
